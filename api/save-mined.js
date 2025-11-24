@@ -30,6 +30,36 @@ export default async function handler(req, res) {
             return res.status(400).json({ success: false, error: 'Link é obrigatório para produtos Shopee' });
         }
 
+        // Upload da imagem para ImgBB (se houver)
+        let imageUrl = '';
+
+        if (product.image) {
+            try {
+                const base64Data = product.image.split(',')[1]; // Remove o prefixo data:image/...
+
+                const formData = new URLSearchParams();
+                formData.append('key', process.env.IMGBB_API_KEY);
+                formData.append('image', base64Data);
+
+                const imgbbResponse = await fetch('https://api.imgbb.com/1/upload', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const imgbbData = await imgbbResponse.json();
+
+                if (imgbbData.success) {
+                    imageUrl = imgbbData.data.url;
+                    console.log('Imagem enviada para ImgBB:', imageUrl);
+                } else {
+                    console.error('Erro no upload para ImgBB:', imgbbData);
+                }
+            } catch (imgbbError) {
+                console.error('Erro ao fazer upload para ImgBB:', imgbbError);
+                // Continua sem imagem se der erro
+            }
+        }
+
         // Configuração da Autenticação
         const auth = new google.auth.GoogleAuth({
             credentials: {
@@ -38,9 +68,6 @@ export default async function handler(req, res) {
             },
             scopes: ['https://www.googleapis.com/auth/spreadsheets'],
         });
-
-        // Usar a imagem Base64 diretamente (sem upload para Drive)
-        const imageData = product.image || '';
 
         // Salvar no Google Sheets
         const sheets = google.sheets({ version: 'v4', auth });
@@ -56,7 +83,7 @@ export default async function handler(req, res) {
             product.link || '',
             product.reason || '',
             new Date().toISOString(),
-            imageData // Salva Base64 direto na planilha
+            imageUrl // URL da imagem no ImgBB
         ];
 
         // Verifica se a aba existe, se não, cria
@@ -137,7 +164,7 @@ export default async function handler(req, res) {
             success: true,
             message: 'Produto minerado salvo com sucesso!',
             id: row[0],
-            imageData: imageData ? 'Imagem salva' : 'Sem imagem'
+            imageUrl: imageUrl
         });
 
     } catch (error) {
