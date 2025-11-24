@@ -1,5 +1,4 @@
 import { google } from 'googleapis';
-import { Readable } from 'stream';
 
 export default async function handler(req, res) {
     // Permite CORS
@@ -31,69 +30,19 @@ export default async function handler(req, res) {
             return res.status(400).json({ success: false, error: 'Link é obrigatório para produtos Shopee' });
         }
 
-        // Configuração da Autenticação (Compartilhada entre Sheets e Drive)
+        // Configuração da Autenticação
         const auth = new google.auth.GoogleAuth({
             credentials: {
                 client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
                 private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
             },
-            scopes: [
-                'https://www.googleapis.com/auth/spreadsheets',
-                'https://www.googleapis.com/auth/drive.file'
-            ],
+            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
         });
 
-        // 1. Upload da Imagem para o Google Drive (se houver)
-        let imageLink = '';
+        // Usar a imagem Base64 diretamente (sem upload para Drive)
+        const imageData = product.image || '';
 
-        if (product.image) {
-            try {
-                const drive = google.drive({ version: 'v3', auth });
-                const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-
-                // Converter Base64 para Stream
-                const base64Data = product.image.split(';base64,').pop();
-                const buffer = Buffer.from(base64Data, 'base64');
-                const stream = Readable.from(buffer);
-
-                const fileMetadata = {
-                    name: `${product.name}_${Date.now()}.jpg`,
-                    parents: [folderId],
-                };
-
-                const media = {
-                    mimeType: 'image/jpeg',
-                    body: stream,
-                };
-
-                // Upload do arquivo
-                const file = await drive.files.create({
-                    resource: fileMetadata,
-                    media: media,
-                    fields: 'id, webContentLink, webViewLink',
-                });
-
-                console.log('Imagem enviada para o Drive:', file.data.id);
-
-                // Tornar o arquivo público (para visualização no site)
-                await drive.permissions.create({
-                    fileId: file.data.id,
-                    requestBody: {
-                        role: 'reader',
-                        type: 'anyone',
-                    },
-                });
-
-                // Usar webViewLink para visualização
-                imageLink = file.data.webViewLink;
-
-            } catch (driveError) {
-                console.error('Erro no upload para o Drive:', driveError);
-                // Não falha o request todo, apenas loga o erro e segue sem imagem
-            }
-        }
-
-        // 2. Salvar no Google Sheets
+        // Salvar no Google Sheets
         const sheets = google.sheets({ version: 'v4', auth });
         const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 
@@ -107,7 +56,7 @@ export default async function handler(req, res) {
             product.link || '',
             product.reason || '',
             new Date().toISOString(),
-            imageLink || '' // Nova coluna: Imagem
+            imageData // Salva Base64 direto na planilha
         ];
 
         // Verifica se a aba existe, se não, cria
@@ -131,7 +80,7 @@ export default async function handler(req, res) {
                 },
             });
 
-            // Adiciona cabeçalhos (Atualizado com Imagem)
+            // Adiciona cabeçalhos
             const headers = ['ID', 'Data', 'Nome', 'Link', 'Motivo', 'Timestamp', 'Imagem'];
 
             await sheets.spreadsheets.values.update({
@@ -188,7 +137,7 @@ export default async function handler(req, res) {
             success: true,
             message: 'Produto minerado salvo com sucesso!',
             id: row[0],
-            imageLink: imageLink
+            imageData: imageData ? 'Imagem salva' : 'Sem imagem'
         });
 
     } catch (error) {
