@@ -38,7 +38,7 @@ export default async function handler(req, res) {
                 const base64Data = product.image.split(',')[1]; // Remove o prefixo data:image/...
 
                 const formData = new URLSearchParams();
-                formData.append('key', process.env.IMGBB_API_KEY);
+                formData.append('key', 'be7882f2f950406ba1a4311232bb3fc5');
                 formData.append('image', base64Data);
 
                 const imgbbResponse = await fetch('https://api.imgbb.com/1/upload', {
