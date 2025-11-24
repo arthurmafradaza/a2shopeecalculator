@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Calculator,
     TrendingUp,
@@ -96,10 +97,10 @@ const calculatePriceForDesiredMargin = (custo, custoVariavel, taxaPercent, taxaF
     if (margem <= 0 || margem >= 100) return 0;
 
     const cpaMedio = (cMin + cMax) / 2;
-    
+
     // Fórmula: Receita Bruta * (1 - margem/100 - taxaShopee%/100 - imposto%/100) = custo + custoVariavel + cpaMedio + taxaFixa
     const fatorReducao = 1 - (margem / 100) - (tPct / 100) - (iPct / 100);
-    
+
     if (fatorReducao <= 0) return 0;
 
     const preco = (c + cVar + cpaMedio + tFix) / fatorReducao;
@@ -142,6 +143,7 @@ const InputField = ({ label, name, value, onChange, type = "number", step = "0.0
 );
 
 const ShopeeCalculator = () => {
+    const navigate = useNavigate();
     // --- State ---
     const [inputs, setInputs] = useState({
         nome: '',
@@ -164,7 +166,7 @@ const ShopeeCalculator = () => {
     const [suggestedPrice, setSuggestedPrice] = useState(0);
     const [simulatedCPA, setSimulatedCPA] = useState(0);
     const [isSavingToSheets, setIsSavingToSheets] = useState(false);
-    
+
     // URL fixa da API do Vercel
     const SHEETS_API_URL = 'https://a2shopeecalculator.vercel.app/api/save-product';
     const GET_PRODUCTS_API_URL = 'https://a2shopeecalculator.vercel.app/api/get-products';
@@ -178,7 +180,7 @@ const ShopeeCalculator = () => {
                 try {
                     const response = await fetch(GET_PRODUCTS_API_URL);
                     const result = await response.json();
-                    
+
                     if (result.success && result.products) {
                         // Converter produtos do formato Sheets para o formato local
                         const convertedProducts = result.products.map(p => ({
@@ -195,10 +197,10 @@ const ShopeeCalculator = () => {
                             cpaMax: p.cpamáximo || p.cpamaximo || 8.00,
                             margemDesejada: p.margemdesejadapercent || p.margemdesejada || '',
                         }));
-                        
+
                         // Filtra produtos vazios (sem nome)
                         const validProducts = convertedProducts.filter(p => p.nome && p.nome.trim() !== '');
-                        
+
                         // Ordena por data mais recente primeiro (baseado no timestamp se disponível)
                         validProducts.sort((a, b) => {
                             // Tenta ordenar por ID (que é timestamp) se disponível
@@ -210,7 +212,7 @@ const ShopeeCalculator = () => {
                             const dateB = new Date(b.date || 0);
                             return dateB - dateA;
                         });
-                        
+
                         // Atualiza estado e localStorage com produtos do Sheets
                         setSavedProducts(validProducts);
                         localStorage.setItem('shopeeProducts', JSON.stringify(validProducts));
@@ -320,7 +322,7 @@ const ShopeeCalculator = () => {
             alert('Preencha o nome do produto!');
             return;
         }
-        
+
         // Garante que os valores numéricos estão corretos
         const newProduct = {
             nome: inputs.nome.trim(),
@@ -336,18 +338,18 @@ const ShopeeCalculator = () => {
             id: Date.now(),
             date: new Date().toLocaleDateString('pt-BR')
         };
-        
+
         const updated = [newProduct, ...savedProducts];
         setSavedProducts(updated);
         localStorage.setItem('shopeeProducts', JSON.stringify(updated));
-        
+
         // Salvar no Google Sheets (sempre tenta salvar)
         setIsSavingToSheets(true);
-        
+
         try {
             // Log para debug
             console.log('Enviando produto:', newProduct);
-            
+
             const response = await fetch(SHEETS_API_URL, {
                 method: 'POST',
                 headers: {
@@ -355,10 +357,10 @@ const ShopeeCalculator = () => {
                 },
                 body: JSON.stringify(newProduct),
             });
-            
+
             const result = await response.json();
             console.log('Resposta da API:', result);
-            
+
             if (result.success) {
                 alert('✅ Produto salvo no Google Sheets!');
             } else {
@@ -372,12 +374,12 @@ const ShopeeCalculator = () => {
             setIsSavingToSheets(false);
         }
     };
-    
+
     const loadProductsFromSheets = async () => {
         try {
             const response = await fetch(GET_PRODUCTS_API_URL);
             const result = await response.json();
-            
+
             if (result.success && result.products) {
                 // Converter produtos do formato Sheets para o formato local
                 const convertedProducts = result.products.map(p => ({
@@ -394,10 +396,10 @@ const ShopeeCalculator = () => {
                     cpaMax: p.cpamáximo || p.cpamaximo || 8.00,
                     margemDesejada: p.margemdesejadapercent || p.margemdesejada || '',
                 }));
-                
+
                 // Filtra produtos vazios (sem nome)
                 const validProducts = convertedProducts.filter(p => p.nome && p.nome.trim() !== '');
-                
+
                 // Ordena por data mais recente primeiro (baseado no ID que é timestamp)
                 validProducts.sort((a, b) => {
                     if (a.id && b.id) {
@@ -407,7 +409,7 @@ const ShopeeCalculator = () => {
                     const dateB = new Date(b.date || 0);
                     return dateB - dateA;
                 });
-                
+
                 // Atualiza com produtos do Sheets (fonte única de verdade)
                 setSavedProducts(validProducts);
                 localStorage.setItem('shopeeProducts', JSON.stringify(validProducts));
@@ -438,13 +440,22 @@ const ShopeeCalculator = () => {
             {/* Header */}
             <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="bg-[#EE4D2D] p-2 rounded-lg">
-                            <ShoppingBag className="w-6 h-6 text-white" />
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => navigate('/')}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
+                            title="Voltar ao Início"
+                        >
+                            <ArrowRight className="w-5 h-5 rotate-180" />
+                        </button>
+                        <div className="flex items-center gap-2">
+                            <div className="bg-[#EE4D2D] p-2 rounded-lg">
+                                <ShoppingBag className="w-6 h-6 text-white" />
+                            </div>
+                            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-[#EE4D2D] to-[#8B0000]">
+                                Shopee Pricing Pro
+                            </h1>
                         </div>
-                        <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-[#EE4D2D] to-[#8B0000]">
-                            Shopee Pricing Pro
-                        </h1>
                     </div>
                     <div className="flex gap-2">
                         <button
@@ -461,71 +472,72 @@ const ShopeeCalculator = () => {
             </header>
 
             {/* Saved Products Sidebar (Overlay) */}
-            {showSaved && (
-                <div className="fixed inset-0 z-50 flex justify-end">
-                    <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowSaved(false)}></div>
-                    <div className="relative w-80 bg-white h-full shadow-2xl p-4 overflow-y-auto transition-transform">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="font-bold text-lg">Produtos Salvos</h3>
-                            <button onClick={() => setShowSaved(false)}><XCircle className="w-6 h-6 text-gray-400" /></button>
-                        </div>
-                        <div className="space-y-3">
-                            {savedProducts.map(p => {
-                                const lucro = parseFloat(p.precoVenda || 0) - 
-                                             (parseFloat(p.custo || 0) + parseFloat(p.custoVariavel || 0) + 
-                                              parseFloat(p.precoVenda || 0) * (parseFloat(p.taxaShopeePercent || 0) / 100) +
-                                              parseFloat(p.taxaShopeeFixa || 0) +
-                                              parseFloat(p.precoVenda || 0) * (parseFloat(p.impostoPercent || 0) / 100) +
-                                              ((parseFloat(p.cpaMin || 0) + parseFloat(p.cpaMax || 0)) / 2));
-                                const margem = parseFloat(p.precoVenda || 0) > 0 ? (lucro / parseFloat(p.precoVenda || 0)) * 100 : 0;
-                                
-                                return (
-                                    <div key={p.id} className="p-3 border rounded-lg hover:border-[#EE4D2D] cursor-pointer group bg-gray-50 transition-all" onClick={() => loadProduct(p)}>
-                                        <div className="flex justify-between items-start">
-                                            <div className="flex-1 min-w-0">
-                                                <div className="font-medium truncate text-gray-900">{p.nome || 'Sem nome'}</div>
-                                                <div className="text-xs text-gray-500 mt-1">{p.date}</div>
+            {
+                showSaved && (
+                    <div className="fixed inset-0 z-50 flex justify-end">
+                        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowSaved(false)}></div>
+                        <div className="relative w-80 bg-white h-full shadow-2xl p-4 overflow-y-auto transition-transform">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="font-bold text-lg">Produtos Salvos</h3>
+                                <button onClick={() => setShowSaved(false)}><XCircle className="w-6 h-6 text-gray-400" /></button>
+                            </div>
+                            <div className="space-y-3">
+                                {savedProducts.map(p => {
+                                    const lucro = parseFloat(p.precoVenda || 0) -
+                                        (parseFloat(p.custo || 0) + parseFloat(p.custoVariavel || 0) +
+                                            parseFloat(p.precoVenda || 0) * (parseFloat(p.taxaShopeePercent || 0) / 100) +
+                                            parseFloat(p.taxaShopeeFixa || 0) +
+                                            parseFloat(p.precoVenda || 0) * (parseFloat(p.impostoPercent || 0) / 100) +
+                                            ((parseFloat(p.cpaMin || 0) + parseFloat(p.cpaMax || 0)) / 2));
+                                    const margem = parseFloat(p.precoVenda || 0) > 0 ? (lucro / parseFloat(p.precoVenda || 0)) * 100 : 0;
+
+                                    return (
+                                        <div key={p.id} className="p-3 border rounded-lg hover:border-[#EE4D2D] cursor-pointer group bg-gray-50 transition-all" onClick={() => loadProduct(p)}>
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="font-medium truncate text-gray-900">{p.nome || 'Sem nome'}</div>
+                                                    <div className="text-xs text-gray-500 mt-1">{p.date}</div>
+                                                </div>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); deleteProduct(p.id); }}
+                                                    className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-2"
+                                                >
+                                                    <XCircle className="w-4 h-4" />
+                                                </button>
                                             </div>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); deleteProduct(p.id); }}
-                                                className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-2"
-                                            >
-                                                <XCircle className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                        <div className="mt-2 flex items-center justify-between">
-                                            <div>
-                                                <div className="text-sm font-bold text-[#EE4D2D]">R$ {parseFloat(p.precoVenda || 0).toFixed(2).replace('.', ',')}</div>
-                                                <div className={`text-xs font-medium mt-0.5 ${lucro > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                                    Lucro: R$ {lucro.toFixed(2).replace('.', ',')}
+                                            <div className="mt-2 flex items-center justify-between">
+                                                <div>
+                                                    <div className="text-sm font-bold text-[#EE4D2D]">R$ {parseFloat(p.precoVenda || 0).toFixed(2).replace('.', ',')}</div>
+                                                    <div className={`text-xs font-medium mt-0.5 ${lucro > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                        Lucro: R$ {lucro.toFixed(2).replace('.', ',')}
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className={`text-xs px-2 py-0.5 rounded-full font-medium ${margem < 0 ? 'bg-red-100 text-red-700' :
+                                                        margem < 5 ? 'bg-amber-100 text-amber-700' :
+                                                            margem < 15 ? 'bg-blue-100 text-blue-700' :
+                                                                margem < 25 ? 'bg-emerald-100 text-emerald-700' :
+                                                                    'bg-purple-100 text-purple-700'
+                                                        }`}>
+                                                        {margem.toFixed(1)}%
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div className="text-right">
-                                                <div className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                                    margem < 0 ? 'bg-red-100 text-red-700' :
-                                                    margem < 5 ? 'bg-amber-100 text-amber-700' :
-                                                    margem < 15 ? 'bg-blue-100 text-blue-700' :
-                                                    margem < 25 ? 'bg-emerald-100 text-emerald-700' :
-                                                    'bg-purple-100 text-purple-700'
-                                                }`}>
-                                                    {margem.toFixed(1)}%
-                                                </div>
-                                            </div>
                                         </div>
+                                    );
+                                })}
+                                {savedProducts.length === 0 && (
+                                    <div className="text-center text-gray-400 py-8">
+                                        <Save className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                        <p>Nenhum produto salvo</p>
+                                        <p className="text-xs mt-2">Os produtos do Google Sheets aparecerão aqui automaticamente</p>
                                     </div>
-                                );
-                            })}
-                            {savedProducts.length === 0 && (
-                                <div className="text-center text-gray-400 py-8">
-                                    <Save className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                                    <p>Nenhum produto salvo</p>
-                                    <p className="text-xs mt-2">Os produtos do Google Sheets aparecerão aqui automaticamente</p>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <div className="grid lg:grid-cols-12 gap-8">
@@ -785,11 +797,10 @@ const ShopeeCalculator = () => {
                                                 <div className="pt-3 mt-3 border-t-2 border-indigo-200">
                                                     <div className="flex items-center justify-between mb-2">
                                                         <span className="text-sm font-semibold text-gray-700">Meta: {formatPercent(parseFloat(inputs.margemDesejada))}</span>
-                                                        <span className={`text-sm font-bold ${
-                                                            currentScenario.margem >= parseFloat(inputs.margemDesejada)
-                                                                ? 'text-emerald-600' 
-                                                                : 'text-amber-600'
-                                                        }`}>
+                                                        <span className={`text-sm font-bold ${currentScenario.margem >= parseFloat(inputs.margemDesejada)
+                                                            ? 'text-emerald-600'
+                                                            : 'text-amber-600'
+                                                            }`}>
                                                             {currentScenario.margem >= parseFloat(inputs.margemDesejada) ? '✓ Meta atingida' : '⚠ Abaixo da meta'}
                                                         </span>
                                                     </div>
@@ -1048,10 +1059,10 @@ const ShopeeCalculator = () => {
                             </div>
                         )}
 
-</div>
+                    </div>
                 </div>
             </main>
-        </div>
+        </div >
     );
 };
 
