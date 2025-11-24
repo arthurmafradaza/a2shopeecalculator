@@ -22,8 +22,13 @@ export default async function handler(req, res) {
         console.log('Produto minerado recebido:', product.name);
 
         // Validação básica
-        if (!product.name || !product.link) {
-            return res.status(400).json({ success: false, error: 'Nome e Link são obrigatórios' });
+        if (!product.name) {
+            return res.status(400).json({ success: false, error: 'Nome é obrigatório' });
+        }
+
+        // Para produtos Shopee, o link é obrigatório
+        if (product.type === 'shopee' && !product.link) {
+            return res.status(400).json({ success: false, error: 'Link é obrigatório para produtos Shopee' });
         }
 
         // Configuração da Autenticação (Compartilhada entre Sheets e Drive)
@@ -91,7 +96,9 @@ export default async function handler(req, res) {
         // 2. Salvar no Google Sheets
         const sheets = google.sheets({ version: 'v4', auth });
         const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-        const sheetName = 'Mineracao';
+
+        // Dynamic sheet name based on type
+        const sheetName = product.type === 'criativos' ? 'Criativos' : 'Mineracao';
 
         const row = [
             product.id || Date.now(),
@@ -137,6 +144,10 @@ export default async function handler(req, res) {
             });
 
             // Formata cabeçalho
+            const headerColor = product.type === 'criativos'
+                ? { red: 0.61, green: 0.35, blue: 0.71 } // Purple
+                : { red: 0.96, green: 0.64, blue: 0.26 }; // Orange
+
             await sheets.spreadsheets.batchUpdate({
                 spreadsheetId,
                 requestBody: {
@@ -150,7 +161,7 @@ export default async function handler(req, res) {
                                 },
                                 cell: {
                                     userEnteredFormat: {
-                                        backgroundColor: { red: 0.96, green: 0.64, blue: 0.26 },
+                                        backgroundColor: headerColor,
                                         textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true },
                                         horizontalAlignment: 'CENTER',
                                     },

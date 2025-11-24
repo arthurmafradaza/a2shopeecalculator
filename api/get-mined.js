@@ -26,7 +26,10 @@ export default async function handler(req, res) {
 
         const sheets = google.sheets({ version: 'v4', auth });
         const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-        const sheetName = 'Mineracao';
+
+        // Dynamic sheet name based on type query parameter
+        const type = req.query.type || 'shopee';
+        const sheetName = type === 'criativos' ? 'Criativos' : 'Mineracao';
 
         // Verifica se a aba existe
         try {

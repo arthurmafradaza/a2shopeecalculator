@@ -19,7 +19,7 @@ const Minerador = () => {
 
     // API URLs
     const SAVE_API_URL = '/api/save-mined';
-    const GET_API_URL = '/api/get-mined';
+    const GET_API_URL = '/api/get-mined?type=shopee';
 
     // Load from API on mount
     useEffect(() => {
@@ -83,6 +83,7 @@ const Minerador = () => {
             link,
             reason,
             image, // Send image to API
+            type: 'shopee', // Important flag for backend
             date: new Date().toLocaleDateString('pt-BR')
         };
 
@@ -140,9 +141,9 @@ const Minerador = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button
-                            onClick={() => navigate('/')}
+                            onClick={() => navigate('/minerador')}
                             className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
-                            title="Voltar ao Início"
+                            title="Voltar"
                         >
                             <ArrowLeft className="w-5 h-5" />
                         </button>
