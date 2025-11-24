@@ -24,8 +24,11 @@ export default async function handler(req, res) {
   try {
     const product = req.body;
 
+    // Log para debug
+    console.log('Produto recebido:', JSON.stringify(product));
+
     // Validação básica
-    if (!product.nome) {
+    if (!product.nome || product.nome.trim() === '') {
       return res.status(400).json({ success: false, error: 'Nome do produto é obrigatório' });
     }
 
@@ -61,6 +64,8 @@ export default async function handler(req, res) {
     else if (margem < 15) status = 'Viável';
     else if (margem < 25) status = 'Bom';
 
+    const margemDesejada = parseFloat(product.margemDesejada) || 0;
+
     const row = [
       product.id || Date.now(),
       new Date().toLocaleDateString('pt-BR'),
@@ -75,6 +80,7 @@ export default async function handler(req, res) {
       parseFloat(product.cpaMax) || 0,
       lucroLiquido,
       margem,
+      margemDesejada,
       status,
       new Date().toISOString(),
     ];
@@ -104,7 +110,7 @@ export default async function handler(req, res) {
       const headers = [
         'ID', 'Data', 'Nome', 'Custo', 'Custo Variável', 'Preço Venda',
         'Taxa Shopee %', 'Taxa Shopee Fixa', 'Imposto %', 'CPA Mínimo', 'CPA Máximo',
-        'Lucro Líquido', 'Margem %', 'Status', 'Timestamp'
+        'Lucro Líquido', 'Margem %', 'Margem Desejada %', 'Status', 'Timestamp'
       ];
       
       await sheets.spreadsheets.values.update({
@@ -143,15 +149,15 @@ export default async function handler(req, res) {
       });
     }
 
-    // Adiciona a linha
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: `${sheetName}!A:O`,
-      valueInputOption: 'RAW',
-      requestBody: {
-        values: [row],
-      },
-    });
+      // Adiciona a linha
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: `${sheetName}!A:P`,
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [row],
+        },
+      });
 
     return res.status(200).json({
       success: true,

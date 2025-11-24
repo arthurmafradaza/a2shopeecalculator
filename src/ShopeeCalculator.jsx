@@ -6,7 +6,6 @@ import {
     CheckCircle,
     XCircle,
     Save,
-    RefreshCw,
     Download,
     Info,
     DollarSign,
@@ -14,9 +13,7 @@ import {
     ShoppingBag,
     Target,
     ArrowRight,
-    Lightbulb,
-    Settings,
-    Database
+    Lightbulb
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -85,6 +82,30 @@ const calculateSuggestedPrice = (custo, custoVariavel, taxaPercent, taxaFixa, im
     return Math.ceil(preco * 2) / 2; // Arredonda para .00 ou .50
 };
 
+// Calcula o preço de venda necessário para atingir uma margem desejada (%)
+const calculatePriceForDesiredMargin = (custo, custoVariavel, taxaPercent, taxaFixa, impostoPercent, cpaMin, cpaMax, margemDesejada) => {
+    const c = parseFloat(custo) || 0;
+    const cVar = parseFloat(custoVariavel) || 0;
+    const tPct = parseFloat(taxaPercent) || 0;
+    const tFix = parseFloat(taxaFixa) || 0;
+    const iPct = parseFloat(impostoPercent) || 0;
+    const cMin = parseFloat(cpaMin) || 0;
+    const cMax = parseFloat(cpaMax) || 0;
+    const margem = parseFloat(margemDesejada) || 0;
+
+    if (margem <= 0 || margem >= 100) return 0;
+
+    const cpaMedio = (cMin + cMax) / 2;
+    
+    // Fórmula: Receita Bruta * (1 - margem/100 - taxaShopee%/100 - imposto%/100) = custo + custoVariavel + cpaMedio + taxaFixa
+    const fatorReducao = 1 - (margem / 100) - (tPct / 100) - (iPct / 100);
+    
+    if (fatorReducao <= 0) return 0;
+
+    const preco = (c + cVar + cpaMedio + tFix) / fatorReducao;
+    return Math.ceil(preco * 2) / 2; // Arredonda para .00 ou .50
+};
+
 // --- Components ---
 
 const InputField = ({ label, name, value, onChange, type = "number", step = "0.01", icon: Icon, tooltip, children }) => (
@@ -132,34 +153,86 @@ const ShopeeCalculator = () => {
         impostoPercent: 5,
         cpaMin: 3.00,
         cpaMax: 8.00,
-        lucroDesejado: '',
         margemDesejada: ''
     });
 
     const [currentScenario, setCurrentScenario] = useState(null);
     const [suggestedScenario, setSuggestedScenario] = useState(null);
     const [scenarios, setScenarios] = useState([]);
-    const [reverseCalc, setReverseCalc] = useState({ lucro: '', cpa: '', resultado: null });
     const [savedProducts, setSavedProducts] = useState([]);
     const [showSaved, setShowSaved] = useState(false);
     const [suggestedPrice, setSuggestedPrice] = useState(0);
     const [simulatedCPA, setSimulatedCPA] = useState(0);
-    const [sheetsUrl, setSheetsUrl] = useState('');
     const [isSavingToSheets, setIsSavingToSheets] = useState(false);
-    const [showSheetsConfig, setShowSheetsConfig] = useState(false);
+    
+    // URL fixa da API do Vercel
+    const SHEETS_API_URL = 'https://a2shopeecalculator.vercel.app/api/save-product';
+    const GET_PRODUCTS_API_URL = 'https://a2shopeecalculator.vercel.app/api/get-products';
 
     // --- Effects ---
 
+    // Carregar produtos do Sheets sempre que abrir a sidebar
     useEffect(() => {
-        const saved = localStorage.getItem('shopeeProducts');
-        if (saved) {
-            setSavedProducts(JSON.parse(saved));
+        if (showSaved) {
+            const loadProducts = async () => {
+                try {
+                    const response = await fetch(GET_PRODUCTS_API_URL);
+                    const result = await response.json();
+                    
+                    if (result.success && result.products) {
+                        // Converter produtos do formato Sheets para o formato local
+                        const convertedProducts = result.products.map(p => ({
+                            id: p.id || Date.now(),
+                            date: p.data || new Date().toLocaleDateString('pt-BR'),
+                            nome: p.nome || '',
+                            custo: p.custo || '',
+                            custoVariavel: p.custovariável || p.custovariavel || '',
+                            precoVenda: p.preçovenda || p.precovenda || '',
+                            taxaShopeePercent: p.taxashopeepercent || p.taxashopee || 20,
+                            taxaShopeeFixa: p.taxashopeefixa || 4.00,
+                            impostoPercent: p.impostopercent || p.imposto || 5,
+                            cpaMin: p.cpamínimo || p.cpaminimo || 3.00,
+                            cpaMax: p.cpamáximo || p.cpamaximo || 8.00,
+                            margemDesejada: p.margemdesejadapercent || p.margemdesejada || '',
+                        }));
+                        
+                        // Filtra produtos vazios (sem nome)
+                        const validProducts = convertedProducts.filter(p => p.nome && p.nome.trim() !== '');
+                        
+                        // Ordena por data mais recente primeiro (baseado no timestamp se disponível)
+                        validProducts.sort((a, b) => {
+                            // Tenta ordenar por ID (que é timestamp) se disponível
+                            if (a.id && b.id) {
+                                return b.id - a.id;
+                            }
+                            // Senão, ordena por data
+                            const dateA = new Date(a.date || 0);
+                            const dateB = new Date(b.date || 0);
+                            return dateB - dateA;
+                        });
+                        
+                        // Atualiza estado e localStorage com produtos do Sheets
+                        setSavedProducts(validProducts);
+                        localStorage.setItem('shopeeProducts', JSON.stringify(validProducts));
+                    } else {
+                        // Se não conseguiu carregar, mantém produtos locais como fallback
+                        const saved = localStorage.getItem('shopeeProducts');
+                        if (saved) {
+                            setSavedProducts(JSON.parse(saved));
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar do Sheets:', error);
+                    // Em caso de erro, tenta carregar do localStorage como fallback
+                    const saved = localStorage.getItem('shopeeProducts');
+                    if (saved) {
+                        setSavedProducts(JSON.parse(saved));
+                    }
+                }
+            };
+            loadProducts();
         }
-        const url = localStorage.getItem('sheetsUrl');
-        if (url) {
-            setSheetsUrl(url);
-        }
-    }, []);
+    }, [showSaved]);
 
     useEffect(() => {
         calculateAll();
@@ -241,161 +314,111 @@ const ShopeeCalculator = () => {
         }
     };
 
-    const handleReverseCalc = () => {
-        const custo = parseFloat(inputs.custo) || 0;
-        const custoVar = parseFloat(inputs.custoVariavel) || 0;
-        const taxaPercent = parseFloat(inputs.taxaShopeePercent) || 0;
-        const taxaFixa = parseFloat(inputs.taxaShopeeFixa) || 0;
-        const impostoPercent = parseFloat(inputs.impostoPercent) || 0;
-        const cpa = parseFloat(reverseCalc.cpa) || 0;
-        const lucro = parseFloat(reverseCalc.lucro) || 0;
-
-        const fatorReducao = 1 - (taxaPercent / 100) - (impostoPercent / 100);
-        if (fatorReducao <= 0) {
-            setReverseCalc(prev => ({ ...prev, resultado: 'Erro: Taxas muito altas' }));
-            return;
-        }
-
-        const precoNecessario = (custo + custoVar + cpa + lucro + taxaFixa) / fatorReducao;
-        setReverseCalc(prev => ({ ...prev, resultado: precoNecessario }));
-    };
 
     const saveProduct = async () => {
-        if (!inputs.nome) {
+        if (!inputs.nome || inputs.nome.trim() === '') {
             alert('Preencha o nome do produto!');
             return;
         }
-        const newProduct = { ...inputs, id: Date.now(), date: new Date().toLocaleDateString() };
+        
+        // Garante que os valores numéricos estão corretos
+        const newProduct = {
+            nome: inputs.nome.trim(),
+            custo: inputs.custo || '0',
+            custoVariavel: inputs.custoVariavel || '0',
+            precoVenda: inputs.precoVenda || '0',
+            taxaShopeePercent: inputs.taxaShopeePercent || '20',
+            taxaShopeeFixa: inputs.taxaShopeeFixa || '4.00',
+            impostoPercent: inputs.impostoPercent || '5',
+            cpaMin: inputs.cpaMin || '3.00',
+            cpaMax: inputs.cpaMax || '8.00',
+            margemDesejada: inputs.margemDesejada || '',
+            id: Date.now(),
+            date: new Date().toLocaleDateString('pt-BR')
+        };
+        
         const updated = [newProduct, ...savedProducts];
         setSavedProducts(updated);
         localStorage.setItem('shopeeProducts', JSON.stringify(updated));
         
-        // Salvar no Google Sheets se configurado
-        if (sheetsUrl) {
-            setIsSavingToSheets(true);
-            
-            // Tenta primeiro com fetch
-            try {
-                const response = await fetch(sheetsUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(newProduct),
-                });
-                
-                const result = await response.json();
-                if (result.success) {
-                    alert('✅ Produto salvo no Google Sheets!');
-                } else {
-                    alert('❌ Erro ao salvar: ' + (result.error || 'Erro desconhecido'));
-                    console.error('Erro do Sheets:', result);
-                }
-            } catch (error) {
-                console.error('Erro com fetch, tentando método alternativo:', error);
-                
-                // Se fetch falhar (CORS), usa método alternativo com redirecionamento
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = sheetsUrl;
-                form.target = '_blank';
-                form.enctype = 'application/x-www-form-urlencoded';
-                form.style.display = 'none';
-                
-                // Adiciona dados como campos individuais (mais confiável)
-                Object.keys(newProduct).forEach(key => {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = key;
-                    input.value = newProduct[key] || '';
-                    form.appendChild(input);
-                });
-                
-                // Também adiciona JSON completo como fallback
-                const jsonInput = document.createElement('input');
-                jsonInput.type = 'hidden';
-                jsonInput.name = 'jsonData';
-                jsonInput.value = JSON.stringify(newProduct);
-                form.appendChild(jsonInput);
-                
-                document.body.appendChild(form);
-                form.submit();
-                
-                setTimeout(() => {
-                    if (document.body.contains(form)) {
-                        document.body.removeChild(form);
-                    }
-                }, 1000);
-                
-                alert('✅ Produto enviado! Verifique a planilha.\n\n(Se não apareceu, verifique as permissões)');
-            } finally {
-                setIsSavingToSheets(false);
-            }
-        } else {
-            alert('✅ Produto salvo localmente!');
-        }
-    };
-    
-    const testSheetsConnection = async () => {
-        if (!sheetsUrl) {
-            alert('Configure a URL do Google Sheets primeiro!');
-            return;
-        }
+        // Salvar no Google Sheets (sempre tenta salvar)
+        setIsSavingToSheets(true);
         
         try {
-            const response = await fetch(sheetsUrl);
-            const result = await response.json();
+            // Log para debug
+            console.log('Enviando produto:', newProduct);
             
-            if (result.success !== undefined) {
-                alert('✅ Conexão OK! A API está funcionando.\n\nProdutos encontrados: ' + (result.products?.length || 0));
+            const response = await fetch(SHEETS_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(newProduct),
+            });
+            
+            const result = await response.json();
+            console.log('Resposta da API:', result);
+            
+            if (result.success) {
+                alert('✅ Produto salvo no Google Sheets!');
             } else {
-                alert('⚠️ Resposta inesperada da API. Verifique o script.');
+                alert('❌ Erro ao salvar: ' + (result.error || 'Erro desconhecido'));
+                console.error('Erro do Sheets:', result);
             }
         } catch (error) {
-            alert('❌ Erro ao conectar:\n\n' + error.message + '\n\nVerifique:\n1. Se a URL está correta\n2. Se o deploy foi feito com "Qualquer pessoa"\n3. Se autorizou as permissões');
+            console.error('Erro ao salvar no Sheets:', error);
+            alert('⚠️ Erro ao salvar no Google Sheets!\n\nErro: ' + error.message);
+        } finally {
+            setIsSavingToSheets(false);
         }
     };
     
     const loadProductsFromSheets = async () => {
-        if (!sheetsUrl) {
-            alert('Configure a URL do Google Sheets primeiro!');
-            return;
-        }
-        
         try {
-            const response = await fetch(sheetsUrl);
+            const response = await fetch(GET_PRODUCTS_API_URL);
             const result = await response.json();
             
             if (result.success && result.products) {
                 // Converter produtos do formato Sheets para o formato local
                 const convertedProducts = result.products.map(p => ({
                     id: p.id || Date.now(),
-                    date: p.data || new Date().toLocaleDateString(),
+                    date: p.data || new Date().toLocaleDateString('pt-BR'),
                     nome: p.nome || '',
                     custo: p.custo || '',
                     custoVariavel: p.custovariável || p.custovariavel || '',
                     precoVenda: p.preçovenda || p.precovenda || '',
-                    taxaShopeePercent: p.taxashopee || p.taxashopeepercent || 20,
+                    taxaShopeePercent: p.taxashopeepercent || p.taxashopee || 20,
                     taxaShopeeFixa: p.taxashopeefixa || 4.00,
-                    impostoPercent: p.imposto || p.impostopercent || 5,
+                    impostoPercent: p.impostopercent || p.imposto || 5,
                     cpaMin: p.cpamínimo || p.cpaminimo || 3.00,
                     cpaMax: p.cpamáximo || p.cpamaximo || 8.00,
+                    margemDesejada: p.margemdesejadapercent || p.margemdesejada || '',
                 }));
                 
-                setSavedProducts(convertedProducts);
-                localStorage.setItem('shopeeProducts', JSON.stringify(convertedProducts));
-                alert(`${convertedProducts.length} produtos carregados do Google Sheets!`);
+                // Filtra produtos vazios (sem nome)
+                const validProducts = convertedProducts.filter(p => p.nome && p.nome.trim() !== '');
+                
+                // Ordena por data mais recente primeiro (baseado no ID que é timestamp)
+                validProducts.sort((a, b) => {
+                    if (a.id && b.id) {
+                        return b.id - a.id;
+                    }
+                    const dateA = new Date(a.date || 0);
+                    const dateB = new Date(b.date || 0);
+                    return dateB - dateA;
+                });
+                
+                // Atualiza com produtos do Sheets (fonte única de verdade)
+                setSavedProducts(validProducts);
+                localStorage.setItem('shopeeProducts', JSON.stringify(validProducts));
+                alert(`✅ ${validProducts.length} produtos carregados do Google Sheets!`);
+            } else {
+                alert('⚠️ Nenhum produto encontrado no Google Sheets');
             }
         } catch (error) {
             console.error('Erro ao carregar do Sheets:', error);
-            alert('Erro ao carregar produtos do Google Sheets');
+            alert('❌ Erro ao carregar produtos do Google Sheets');
         }
-    };
-    
-    const saveSheetsUrl = () => {
-        localStorage.setItem('sheetsUrl', sheetsUrl);
-        setShowSheetsConfig(false);
-        alert('URL do Google Sheets salva!');
     };
 
     const loadProduct = (product) => {
@@ -425,13 +448,6 @@ const ShopeeCalculator = () => {
                     </div>
                     <div className="flex gap-2">
                         <button
-                            onClick={() => setShowSheetsConfig(!showSheetsConfig)}
-                            className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors"
-                            title="Configurar Google Sheets"
-                        >
-                            <Database className="w-5 h-5" />
-                        </button>
-                        <button
                             onClick={() => setShowSaved(!showSaved)}
                             className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors relative"
                         >
@@ -444,72 +460,6 @@ const ShopeeCalculator = () => {
                 </div>
             </header>
 
-            {/* Google Sheets Config Modal */}
-            {showSheetsConfig && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center">
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowSheetsConfig(false)}></div>
-                    <div className="relative bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-lg flex items-center gap-2">
-                                <Database className="w-5 h-5 text-green-600" />
-                                Configurar Google Sheets
-                            </h3>
-                            <button onClick={() => setShowSheetsConfig(false)}><XCircle className="w-6 h-6 text-gray-400" /></button>
-                        </div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    URL do Web App (Google Apps Script)
-                                </label>
-                                <input
-                                    type="text"
-                                    value={sheetsUrl}
-                                    onChange={(e) => setSheetsUrl(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                    placeholder="https://script.google.com/macros/s/..."
-                                />
-                                <p className="text-xs text-gray-500 mt-2">
-                                    Cole aqui a URL do Web App do Google Apps Script
-                                </p>
-                            </div>
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={saveSheetsUrl}
-                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-medium transition-colors"
-                                >
-                                    Salvar URL
-                                </button>
-                                <button
-                                    onClick={testSheetsConnection}
-                                    disabled={!sheetsUrl}
-                                    className="flex-1 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-md font-medium transition-colors text-sm"
-                                >
-                                    Testar Conexão
-                                </button>
-                            </div>
-                            <button
-                                onClick={loadProductsFromSheets}
-                                disabled={!sheetsUrl}
-                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-2 px-4 rounded-md font-medium transition-colors mt-2"
-                            >
-                                <Download className="w-4 h-4 inline mr-2" />
-                                Carregar do Sheets
-                            </button>
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
-                                <strong>Como configurar:</strong>
-                                <ol className="list-decimal list-inside mt-2 space-y-1">
-                                    <li>Abra sua planilha no Google Sheets</li>
-                                    <li>Vá em Extensões → Apps Script</li>
-                                    <li>Cole o código do arquivo google-apps-script.js</li>
-                                    <li>Faça o deploy como Web App</li>
-                                    <li>Copie a URL e cole aqui</li>
-                                </ol>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* Saved Products Sidebar (Overlay) */}
             {showSaved && (
                 <div className="fixed inset-0 z-50 flex justify-end">
@@ -519,32 +469,59 @@ const ShopeeCalculator = () => {
                             <h3 className="font-bold text-lg">Produtos Salvos</h3>
                             <button onClick={() => setShowSaved(false)}><XCircle className="w-6 h-6 text-gray-400" /></button>
                         </div>
-                        {sheetsUrl && (
-                            <button
-                                onClick={loadProductsFromSheets}
-                                className="w-full mb-4 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Download className="w-4 h-4" />
-                                Carregar do Google Sheets
-                            </button>
-                        )}
                         <div className="space-y-3">
-                            {savedProducts.map(p => (
-                                <div key={p.id} className="p-3 border rounded-lg hover:border-[#EE4D2D] cursor-pointer group bg-gray-50" onClick={() => loadProduct(p)}>
-                                    <div className="flex justify-between items-start">
-                                        <div className="font-medium truncate">{p.nome || 'Sem nome'}</div>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); deleteProduct(p.id); }}
-                                            className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100"
-                                        >
-                                            <XCircle className="w-4 h-4" />
-                                        </button>
+                            {savedProducts.map(p => {
+                                const lucro = parseFloat(p.precoVenda || 0) - 
+                                             (parseFloat(p.custo || 0) + parseFloat(p.custoVariavel || 0) + 
+                                              parseFloat(p.precoVenda || 0) * (parseFloat(p.taxaShopeePercent || 0) / 100) +
+                                              parseFloat(p.taxaShopeeFixa || 0) +
+                                              parseFloat(p.precoVenda || 0) * (parseFloat(p.impostoPercent || 0) / 100) +
+                                              ((parseFloat(p.cpaMin || 0) + parseFloat(p.cpaMax || 0)) / 2));
+                                const margem = parseFloat(p.precoVenda || 0) > 0 ? (lucro / parseFloat(p.precoVenda || 0)) * 100 : 0;
+                                
+                                return (
+                                    <div key={p.id} className="p-3 border rounded-lg hover:border-[#EE4D2D] cursor-pointer group bg-gray-50 transition-all" onClick={() => loadProduct(p)}>
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-medium truncate text-gray-900">{p.nome || 'Sem nome'}</div>
+                                                <div className="text-xs text-gray-500 mt-1">{p.date}</div>
+                                            </div>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); deleteProduct(p.id); }}
+                                                className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-2"
+                                            >
+                                                <XCircle className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                        <div className="mt-2 flex items-center justify-between">
+                                            <div>
+                                                <div className="text-sm font-bold text-[#EE4D2D]">R$ {parseFloat(p.precoVenda || 0).toFixed(2).replace('.', ',')}</div>
+                                                <div className={`text-xs font-medium mt-0.5 ${lucro > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                    Lucro: R$ {lucro.toFixed(2).replace('.', ',')}
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                                    margem < 0 ? 'bg-red-100 text-red-700' :
+                                                    margem < 5 ? 'bg-amber-100 text-amber-700' :
+                                                    margem < 15 ? 'bg-blue-100 text-blue-700' :
+                                                    margem < 25 ? 'bg-emerald-100 text-emerald-700' :
+                                                    'bg-purple-100 text-purple-700'
+                                                }`}>
+                                                    {margem.toFixed(1)}%
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="text-xs text-gray-500 mt-1">{p.date}</div>
-                                    <div className="text-xs font-mono mt-1 text-[#EE4D2D]">R$ {p.precoVenda}</div>
+                                );
+                            })}
+                            {savedProducts.length === 0 && (
+                                <div className="text-center text-gray-400 py-8">
+                                    <Save className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                    <p>Nenhum produto salvo</p>
+                                    <p className="text-xs mt-2">Os produtos do Google Sheets aparecerão aqui automaticamente</p>
                                 </div>
-                            ))}
-                            {savedProducts.length === 0 && <div className="text-center text-gray-400 py-8">Nenhum produto salvo</div>}
+                            )}
                         </div>
                     </div>
                 </div>
@@ -683,6 +660,37 @@ const ShopeeCalculator = () => {
                                     </div>
                                 </div>
 
+                                <div className="pt-4 border-t border-gray-100">
+                                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Meta de Lucro</h3>
+                                    <InputField
+                                        label="Margem Desejada (%)"
+                                        name="margemDesejada"
+                                        value={inputs.margemDesejada}
+                                        onChange={handleInputChange}
+                                        icon={Percent}
+                                        tooltip="Digite a margem de lucro que você deseja (ex: 20 para 20%). O sistema calculará o preço necessário."
+                                        type="number"
+                                        step="0.1"
+                                    />
+                                    {inputs.margemDesejada && parseFloat(inputs.margemDesejada) > 0 && (
+                                        <div className="mt-2 p-3 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg">
+                                            <div className="text-xs text-gray-600 mb-1">Preço necessário para {formatPercent(parseFloat(inputs.margemDesejada))} de margem:</div>
+                                            <div className="text-xl font-bold text-indigo-700">
+                                                {formatCurrency(calculatePriceForDesiredMargin(
+                                                    inputs.custo,
+                                                    inputs.custoVariavel,
+                                                    inputs.taxaShopeePercent,
+                                                    inputs.taxaShopeeFixa,
+                                                    inputs.impostoPercent,
+                                                    inputs.cpaMin,
+                                                    inputs.cpaMax,
+                                                    inputs.margemDesejada
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
                                 <button
                                     onClick={saveProduct}
                                     disabled={isSavingToSheets}
@@ -690,7 +698,7 @@ const ShopeeCalculator = () => {
                                 >
                                     <Save className="w-4 h-4" />
                                     {isSavingToSheets ? 'Salvando...' : 'Salvar Produto'}
-                                    {sheetsUrl && <span className="text-xs bg-green-500 px-2 py-0.5 rounded">+ Sheets</span>}
+                                    <span className="text-xs bg-green-500 px-2 py-0.5 rounded">+ Sheets</span>
                                 </button>
                             </div>
                         </div>
@@ -773,6 +781,37 @@ const ShopeeCalculator = () => {
                                                 <span>Margem Líquida</span>
                                                 <span>{formatPercent(currentScenario.margem)}</span>
                                             </div>
+                                            {inputs.margemDesejada && parseFloat(inputs.margemDesejada) > 0 && (
+                                                <div className="pt-3 mt-3 border-t-2 border-indigo-200">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-sm font-semibold text-gray-700">Meta: {formatPercent(parseFloat(inputs.margemDesejada))}</span>
+                                                        <span className={`text-sm font-bold ${
+                                                            currentScenario.margem >= parseFloat(inputs.margemDesejada)
+                                                                ? 'text-emerald-600' 
+                                                                : 'text-amber-600'
+                                                        }`}>
+                                                            {currentScenario.margem >= parseFloat(inputs.margemDesejada) ? '✓ Meta atingida' : '⚠ Abaixo da meta'}
+                                                        </span>
+                                                    </div>
+                                                    {currentScenario.margem < parseFloat(inputs.margemDesejada) && (
+                                                        <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs">
+                                                            <span className="text-amber-800">Preço necessário: </span>
+                                                            <span className="text-amber-900 font-bold">
+                                                                {formatCurrency(calculatePriceForDesiredMargin(
+                                                                    inputs.custo,
+                                                                    inputs.custoVariavel,
+                                                                    inputs.taxaShopeePercent,
+                                                                    inputs.taxaShopeeFixa,
+                                                                    inputs.impostoPercent,
+                                                                    inputs.cpaMin,
+                                                                    inputs.cpaMax,
+                                                                    inputs.margemDesejada
+                                                                ))}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -1009,55 +1048,7 @@ const ShopeeCalculator = () => {
                             </div>
                         )}
 
-                        {/* 2.4 REVERSE CALCULATOR */}
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                                <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-                                    <RefreshCw className="w-5 h-5 text-indigo-600" />
-                                    Calculadora Reversa
-                                </h2>
-                            </div>
-                            <div className="p-6 grid md:grid-cols-3 gap-6 items-end">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Lucro Desejado (R$)</label>
-                                    <input
-                                        type="number"
-                                        value={reverseCalc.lucro}
-                                        onChange={(e) => setReverseCalc({ ...reverseCalc, lucro: e.target.value })}
-                                        className="block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                        placeholder="10.00"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">CPA Planejado (R$)</label>
-                                    <input
-                                        type="number"
-                                        value={reverseCalc.cpa}
-                                        onChange={(e) => setReverseCalc({ ...reverseCalc, cpa: e.target.value })}
-                                        className="block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                        placeholder="5.00"
-                                    />
-                                </div>
-                                <button
-                                    onClick={handleReverseCalc}
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md font-medium transition-colors h-[42px]"
-                                >
-                                    Calcular Preço
-                                </button>
-                            </div>
-                            {reverseCalc.resultado && (
-                                <div className="px-6 pb-6">
-                                    <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center justify-between">
-                                        <span className="text-indigo-800 font-medium">Preço de Venda Necessário:</span>
-                                        <span className="text-2xl font-bold text-indigo-700">
-                                            {typeof reverseCalc.resultado === 'number' ? formatCurrency(reverseCalc.resultado) : reverseCalc.resultado}
-                                        </span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                    </div>
+</div>
                 </div>
             </main>
         </div>

@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${sheetName}!A2:O`, // Pula cabeçalho
+      range: `${sheetName}!A2:P`, // Pula cabeçalho
     });
 
     const rows = response.data.values || [];
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     const headers = [
       'id', 'data', 'nome', 'custo', 'custovariável', 'preçovenda',
       'taxashopeepercent', 'taxashopeefixa', 'impostopercent', 'cpamínimo', 'cpamáximo',
-      'lucrolíquido', 'margempercent', 'status', 'timestamp'
+      'lucrolíquido', 'margempercent', 'margemdesejadapercent', 'status', 'timestamp'
     ];
 
     const products = rows.map(row => {
