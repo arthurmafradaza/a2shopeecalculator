@@ -89,6 +89,58 @@ const LandingPage = () => {
 
                 </div>
 
+                {/* Card 3: Automação */}
+                <div className="w-full max-w-4xl mt-8">
+                    <div
+                        onClick={async () => {
+                            const btn = document.getElementById('automation-btn-text');
+                            const originalText = btn.innerText;
+                            btn.innerText = 'Iniciando...';
+
+                            try {
+                                console.log('Tentando enviar webhook (Produção)...');
+                                // URL de Produção (sem -test)
+                                await fetch('https://primary-production-caa92.up.railway.app/webhook/56ccf2f3-45b3-4e37-af56-13516bc117d2', {
+                                    method: 'GET',
+                                    mode: 'no-cors'
+                                });
+                                console.log('Webhook enviado!');
+                                alert('Automação iniciada!');
+                            } catch (error) {
+                                console.error('Erro:', error);
+                                alert('Erro ao iniciar.');
+                            } finally {
+                                btn.innerText = originalText;
+                            }
+                        }}
+                        className="group relative bg-white rounded-3xl p-8 shadow-lg hover:shadow-2xl hover:shadow-green-500/10 transition-all duration-300 cursor-pointer border border-slate-100 overflow-hidden"
+                    >
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <Sparkles className="w-32 h-32 text-green-500 transform rotate-12 translate-x-8 -translate-y-8" />
+                        </div>
+
+                        <div className="relative z-10 flex items-center justify-between">
+                            <div className="flex items-center gap-6">
+                                <div className="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                                    <Sparkles className="w-7 h-7 text-green-600" />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-bold text-slate-900 mb-1 group-hover:text-green-600 transition-colors">
+                                        Automação n8n
+                                    </h3>
+                                    <p className="text-slate-500">
+                                        Disparar fluxo de automação
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div id="automation-btn-text" className="flex items-center text-green-600 font-semibold group-hover:translate-x-2 transition-transform bg-green-50 px-6 py-3 rounded-xl">
+                                Iniciar Agora <ArrowRight className="ml-2 w-5 h-5" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Footer / Status */}
                 <div className="mt-20 flex items-center gap-2 text-sm text-slate-400">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
